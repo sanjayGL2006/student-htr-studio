@@ -33,6 +33,9 @@ uploads/
 backend/uploads/
 my_data/
 dataset/
+*.db
+*.sqlite
+*.sqlite3
 *.safetensors
 *.bin
 *.pt
@@ -41,6 +44,7 @@ dataset/
 *.lib
 *.exe
 *.pyd
+
 
 # Environment & Secrets
 .env

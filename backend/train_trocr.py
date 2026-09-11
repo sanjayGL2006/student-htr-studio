@@ -140,6 +140,8 @@ def train(
     learning_rate: float = 4e-5,
     max_target_length: int = 128,
     freeze_encoder: bool = False,
+    max_train_samples: Optional[int] = None,
+    max_eval_samples: Optional[int] = 100,
 ):
     print(f"=== Initializing TrOCR Fine-Tuning ===")
     print(f"Base Model: {base_model_id}")
@@ -177,19 +179,67 @@ def train(
         from datasets import load_dataset
         ds = load_dataset(dataset_name)
         train_samples = [{"image": x["image"], "text": x["text"]} for x in ds["train"]]
+        if max_train_samples:
+            train_samples = train_samples[:max_train_samples]
         eval_split = "test" if "test" in ds else "train"
-        eval_samples = [{"image": x["image"], "text": x["text"]} for x in ds[eval_split].select(range(min(50, len(ds[eval_split]))))]
+        eval_samples = [{"image": x["image"], "text": x["text"]} for x in ds[eval_split].select(range(min(max_eval_samples or 50, len(ds[eval_split]))))]
     elif local_data_dir:
         print(f"Loading local dataset from: {local_data_dir}...")
         import pandas as pd
-        csv_path = os.path.join(local_data_dir, "metadata.csv")
-        df = pd.read_csv(csv_path)
-        train_samples = []
-        for _, row in df.iterrows():
-            img_path = os.path.join(local_data_dir, str(row["file_name"]))
-            train_samples.append({"image": img_path, "text": str(row["text"])})
-        eval_samples = train_samples[-max(1, int(0.1 * len(train_samples))):]
-        train_samples = train_samples[:-len(eval_samples)]
+
+        # Check for Kaggle Handwritten Names archive format
+        kaggle_train_csv = os.path.join(local_data_dir, "written_name_train_v2.csv")
+        kaggle_val_csv = os.path.join(local_data_dir, "written_name_validation_v2.csv")
+        meta_csv = os.path.join(local_data_dir, "metadata.csv")
+
+        if os.path.exists(kaggle_train_csv):
+            print("Detected Kaggle Handwritten Names Dataset structure...")
+            df_train = pd.read_csv(kaggle_train_csv)
+            # Filter NaN or UNREADABLE
+            df_train = df_train.dropna(subset=["FILENAME", "IDENTITY"])
+            df_train = df_train[df_train["IDENTITY"] != "UNREADABLE"]
+
+            train_img_dir = os.path.join(local_data_dir, "train_v2", "train")
+            if not os.path.exists(train_img_dir):
+                train_img_dir = os.path.join(local_data_dir, "train_v2")
+
+            if max_train_samples:
+                df_train = df_train.head(max_train_samples)
+
+            train_samples = []
+            for _, row in df_train.iterrows():
+                img_path = os.path.join(train_img_dir, str(row["FILENAME"]))
+                if os.path.exists(img_path):
+                    train_samples.append({"image": img_path, "text": str(row["IDENTITY"])})
+
+            eval_samples = []
+            if os.path.exists(kaggle_val_csv):
+                df_val = pd.read_csv(kaggle_val_csv).dropna(subset=["FILENAME", "IDENTITY"])
+                df_val = df_val[df_val["IDENTITY"] != "UNREADABLE"]
+                val_img_dir = os.path.join(local_data_dir, "validation_v2", "validation")
+                if not os.path.exists(val_img_dir):
+                    val_img_dir = os.path.join(local_data_dir, "validation_v2")
+                if max_eval_samples:
+                    df_val = df_val.head(max_eval_samples)
+                for _, row in df_val.iterrows():
+                    img_path = os.path.join(val_img_dir, str(row["FILENAME"]))
+                    if os.path.exists(img_path):
+                        eval_samples.append({"image": img_path, "text": str(row["IDENTITY"])})
+        elif os.path.exists(meta_csv):
+            df = pd.read_csv(meta_csv)
+            train_samples = []
+            for _, row in df.iterrows():
+                col_file = "file_name" if "file_name" in row else row.index[0]
+                col_text = "text" if "text" in row else row.index[1]
+                img_path = os.path.join(local_data_dir, str(row[col_file]))
+                train_samples.append({"image": img_path, "text": str(row[col_text])})
+            if max_train_samples:
+                train_samples = train_samples[:max_train_samples]
+            eval_count = max(1, int(0.1 * len(train_samples)))
+            eval_samples = train_samples[-eval_count:]
+            train_samples = train_samples[:-len(eval_samples)]
+        else:
+            raise FileNotFoundError(f"Could not find metadata.csv or written_name_train_v2.csv in {local_data_dir}")
     else:
         raise ValueError("Please provide --dataset_name, --local_data_dir, or use --synthetic")
 
@@ -247,15 +297,17 @@ def train(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Fine-tune TrOCR for Classroom HTR")
     parser.add_argument("--base_model_id", type=str, default="microsoft/trocr-base-handwritten", help="Base model checkpoint")
-    parser.add_argument("--dataset_name", type=str, default=None, help="Hugging Face dataset name (e.g. Teklia/iam-lines)")
-    parser.add_argument("--local_data_dir", type=str, default=None, help="Directory containing metadata.csv and image files")
+    parser.add_argument("--dataset_name", type=str, default=None, help="Hugging Face dataset name")
+    parser.add_argument("--local_data_dir", type=str, default=None, help="Directory containing dataset images and CSV")
     parser.add_argument("--synthetic", action="store_true", help="Generate synthetic samples to test pipeline")
     parser.add_argument("--freeze_encoder", action="store_true", help="Freeze vision encoder for fast CPU training")
     parser.add_argument("--output_dir", type=str, default="./models/trocr-custom", help="Directory to save fine-tuned weights")
-    parser.add_argument("--epochs", type=int, default=5, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=3, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per device")
     parser.add_argument("--learning_rate", type=float, default=4e-5, help="Learning rate")
     parser.add_argument("--max_length", type=int, default=128, help="Max sequence length")
+    parser.add_argument("--max_train_samples", type=int, default=None, help="Limit number of training samples")
+    parser.add_argument("--max_eval_samples", type=int, default=100, help="Limit number of eval samples")
 
     args = parser.parse_args()
 
@@ -270,5 +322,8 @@ if __name__ == "__main__":
         batch_size=args.batch_size,
         learning_rate=args.learning_rate,
         max_target_length=args.max_length,
+        max_train_samples=args.max_train_samples,
+        max_eval_samples=args.max_eval_samples,
     )
+
 

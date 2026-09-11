@@ -1,0 +1,56 @@
+# Python & Virtual Environments
+venv/
+.venv/
+env/
+backend/venv/
+backend/.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+
+# Node & Frontend
+node_modules/
+frontend/node_modules/
+dist/
+frontend/dist/
+build/
+frontend/build/
+.next/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+tsconfig.tsbuildinfo
+frontend/tsconfig.tsbuildinfo
+
+# Large Model Weights & Data Folders
+models/
+backend/models/
+uploads/
+backend/uploads/
+my_data/
+dataset/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.dll
+*.lib
+*.exe
+*.pyd
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/.env
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -21,10 +21,13 @@ import argparse
 import os
 from typing import Optional, Dict, Any
 
+# pyrefly: ignore [missing-import]
 import torch
 # pyrefly: ignore [missing-import]
 from torch.utils.data import Dataset
+# pyrefly: ignore [missing-import]
 from PIL import Image, ImageDraw, ImageFont
+# pyrefly: ignore [missing-import]
 import numpy as np
 # pyrefly: ignore [missing-import]
 from transformers import (

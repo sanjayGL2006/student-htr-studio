@@ -21,7 +21,7 @@ import os
 
 import torch
 from symspellpy import SymSpell, Verbosity
-from transformers import T5ForConditionalGeneration, T5Tokenizer
+from transformers import AutoTokenizer, T5ForConditionalGeneration
 
 from app.config import settings
 
@@ -80,25 +80,41 @@ class GrammarEngine:
     def __init__(self, model_id: str | None = None, device: str | None = None):
         self.device = device or settings.device
         self.model_id = model_id or settings.grammar_model_id
-        self.tokenizer = T5Tokenizer.from_pretrained(self.model_id)
-        self.model = T5ForConditionalGeneration.from_pretrained(self.model_id).to(self.device)
-        self.model.eval()
+        self.loaded = False
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
+            self.model = T5ForConditionalGeneration.from_pretrained(self.model_id).to(self.device)
+            self.model.eval()
+            self.loaded = True
+        except Exception as exc:
+            print(f"[WARN] Could not load grammar model ({self.model_id}): {exc}. Falling back to lexical correction.")
+            self.tokenizer = None
+            self.model = None
 
     @torch.no_grad()
     def correct(self, text: str) -> str:
-        if not text.strip():
+        if not self.loaded or not text.strip() or self.tokenizer is None or self.model is None:
             return text
 
-        prompt = f"grammar: {text}"
-        inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(
-            self.device
-        )
-        output_ids = self.model.generate(**inputs, max_new_tokens=256, num_beams=4)
-        corrected = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
-        return corrected.strip()
+        try:
+            prompt = f"grammar: {text}"
+            inputs = self.tokenizer(prompt, return_tensors="pt", truncation=True, max_length=256).to(
+                self.device
+            )
+            output_ids = self.model.generate(**inputs, max_new_tokens=256, num_beams=4)
+            corrected = self.tokenizer.decode(output_ids[0], skip_special_tokens=True)
+            return corrected.strip()
+        except Exception as exc:
+            print(f"[WARN] Grammar correction inference failed: {exc}")
+            return text
 
 
-def two_stage_correct(raw_text: str, sym_spell: SymSpell, grammar_engine: GrammarEngine) -> str:
+def two_stage_correct(raw_text: str, sym_spell: SymSpell, grammar_engine: GrammarEngine | None = None) -> str:
     stage1 = lexical_pass(raw_text, sym_spell)
-    stage2 = grammar_engine.correct(stage1)
-    return stage2
+    if grammar_engine is not None:
+        try:
+            return grammar_engine.correct(stage1)
+        except Exception as exc:
+            print(f"[WARN] two_stage_correct failed in Stage 2: {exc}")
+            return stage1
+    return stage1

@@ -97,6 +97,14 @@ def segment_lines(page_bgr: np.ndarray) -> list[LineCrop]:
         crop = page_bgr[y0:y1, x0:x1]
         crops.append(LineCrop(image=crop, bounding_box={"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}))
 
+    if not crops and page_bgr.size > 0:
+        crops.append(
+            LineCrop(
+                image=page_bgr,
+                bounding_box={"x": 0, "y": 0, "w": page_bgr.shape[1], "h": page_bgr.shape[0]},
+            )
+        )
+
     return crops
 
 
@@ -130,6 +138,9 @@ class TrOCREngine:
         mean per-token softmax probability of the generated sequence, which
         is a reasonable proxy for "how sure was the model", used purely to
         flag lines for manual review — not a calibrated probability."""
+        if crop_bgr is None or crop_bgr.size == 0:
+            return "", 0.0
+
         rgb = cv2.cvtColor(crop_bgr, cv2.COLOR_BGR2RGB)
         pil_img = Image.fromarray(rgb)
 

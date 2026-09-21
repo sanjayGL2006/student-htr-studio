@@ -19,7 +19,11 @@ export default function RosterView({ classId, selectedDocumentId, onSelect, refr
   const [docs, setDocs] = useState<DocumentData[]>([]);
 
   useEffect(() => {
-    listDocuments(classId || undefined).then(setDocs);
+    listDocuments(classId || undefined)
+      .then(setDocs)
+      .catch((err) => {
+        console.warn("Could not fetch documents:", err?.message || err);
+      });
   }, [classId, refreshKey]);
 
   if (docs.length === 0) {

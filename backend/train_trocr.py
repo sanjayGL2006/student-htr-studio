@@ -22,9 +22,11 @@ import os
 from typing import Optional, Dict, Any
 
 import torch
+# pyrefly: ignore [missing-import]
 from torch.utils.data import Dataset
 from PIL import Image, ImageDraw, ImageFont
 import numpy as np
+# pyrefly: ignore [missing-import]
 from transformers import (
     TrOCRProcessor,
     VisionEncoderDecoderModel,
@@ -176,6 +178,7 @@ def train(
         eval_samples = all_samples[50:]
     elif dataset_name:
         print(f"Loading Hugging Face dataset: {dataset_name}...")
+        # pyrefly: ignore [missing-import]
         from datasets import load_dataset
         ds = load_dataset(dataset_name)
         train_samples = [{"image": x["image"], "text": x["text"]} for x in ds["train"]]
@@ -302,7 +305,7 @@ if __name__ == "__main__":
     parser.add_argument("--synthetic", action="store_true", help="Generate synthetic samples to test pipeline")
     parser.add_argument("--freeze_encoder", action="store_true", help="Freeze vision encoder for fast CPU training")
     parser.add_argument("--output_dir", type=str, default="./models/trocr-custom", help="Directory to save fine-tuned weights")
-    parser.add_argument("--epochs", type=int, default=3, help="Number of training epochs")
+    parser.add_argument("--epochs", type=int, default=20, help="Number of training epochs")
     parser.add_argument("--batch_size", type=int, default=4, help="Batch size per device")
     parser.add_argument("--learning_rate", type=float, default=4e-5, help="Learning rate")
     parser.add_argument("--max_length", type=int, default=128, help="Max sequence length")

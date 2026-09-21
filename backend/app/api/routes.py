@@ -142,7 +142,7 @@ async def process_image(
 @router.get("/nodes", response_model=list[NodeOut])
 async def get_nodes(document_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Node).where(Node.document_id == document_id).order_by(Node.created_at))
-    return result.scalars().all()
+    return [NodeOut.model_validate(n) for n in result.scalars().all()]
 
 
 @router.get("/documents", response_model=list[DocumentOut])
@@ -151,7 +151,7 @@ async def list_documents(class_id: str | None = None, db: AsyncSession = Depends
     if class_id:
         stmt = stmt.where(Document.class_id == class_id)
     result = await db.execute(stmt)
-    return result.scalars().all()
+    return [DocumentOut.model_validate(d) for d in result.scalars().all()]
 
 
 @router.get("/documents/{document_id}", response_model=DocumentWithNodes)
@@ -160,9 +160,17 @@ async def get_document(document_id: uuid.UUID, db: AsyncSession = Depends(get_db
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
     result = await db.execute(select(Node).where(Node.document_id == document_id).order_by(Node.created_at))
-    doc_out = DocumentWithNodes.model_validate(doc)
-    doc_out.nodes = [NodeOut.model_validate(n) for n in result.scalars().all()]
-    return doc_out
+    nodes = result.scalars().all()
+    return DocumentWithNodes(
+        id=doc.id,
+        filename=doc.filename,
+        student_id=doc.student_id,
+        writer_name=doc.writer_name,
+        class_id=doc.class_id,
+        status=doc.status,
+        created_at=doc.created_at,
+        nodes=[NodeOut.model_validate(n) for n in nodes],
+    )
 
 
 @router.put("/nodes/{node_id}", response_model=NodeOut)
@@ -186,7 +194,7 @@ async def update_node(node_id: uuid.UUID, payload: NodeUpdate, db: AsyncSession 
         doc.status = "reviewed"
         await db.commit()
 
-    return node
+    return NodeOut.model_validate(node)
 
 
 @router.get("/export/{document_id}")

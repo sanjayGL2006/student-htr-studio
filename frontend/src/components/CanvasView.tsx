@@ -24,8 +24,12 @@ export default function CanvasView({ documentId }: Props) {
   const edges: Edge[] = [];
 
   const load = useCallback(async () => {
-    const data = await getDocument(documentId);
-    setDoc(data);
+    try {
+      const data = await getDocument(documentId);
+      setDoc(data);
+    } catch (err) {
+      console.warn("Could not fetch document:", err);
+    }
   }, [documentId]);
 
   useEffect(() => {

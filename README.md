@@ -116,11 +116,27 @@ handwriting.
 - **Confidence score is a proxy**, not a calibrated probability: it's the
   mean max-softmax across TrOCR's generated tokens. Useful for ranking
   "which lines need a human look" but not as an absolute quality metric.
-- **No per-student retraining.** TrOCR's ViT-based encoder is used as-is
-  across all students' handwriting styles (cursive, print, slant) — this is
-  a deliberate scope choice (see Core Requirement in the original spec), not
-  a gap, but it means unusual handwriting will still show up as
-  low-confidence lines rather than being specially handled.
+- **Per-student or dataset retraining.** While the base model uses a generalized encoder, you can now fine-tune the model to specific handwriting styles or datasets using the provided training script. This allows the system to better handle unusual handwriting or domain-specific text.
+
+## Fine-Tuning TrOCR
+
+A dedicated script (`backend/train_trocr.py`) is provided to fine-tune the TrOCR model on custom data.
+
+```bash
+cd backend
+
+# 1. Train on a Hugging Face dataset (e.g., IAM lines)
+python train_trocr.py --dataset_name Teklia/iam-lines --epochs 5
+
+# 2. Train on a local dataset (e.g., Kaggle Handwritten Names)
+python train_trocr.py --local_data_dir "D:\classroom-htr-system\dataset\archive" --epochs 5
+
+# 3. Fast verification with synthetic data
+python train_trocr.py --synthetic --epochs 2
+```
+
+To use your fine-tuned model in the application, update the backend environment variable:
+`TROCR_MODEL_ID=./models/trocr-custom`
 - **SQLite is not supported** for this schema as-is: `nodes.bounding_box`
   and `nodes.canvas_position` use PostgreSQL's `JSONB` column type. If you
   want a lighter local-only setup (consistent with other SPVM³ projects),

@@ -255,7 +255,7 @@ def train(
     print(f"Dataset ready. Train size: {len(train_dataset)}, Eval size: {len(eval_dataset) if eval_dataset else 0}")
 
     # 3. Training Arguments
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    device = "cuda" if torch.cuda.is_available() else "gpu"
     print(f"Training on device: {device}")
 
     eval_mode = "epoch" if eval_dataset else "no"
@@ -265,7 +265,7 @@ def train(
         save_strategy="epoch",
         logging_strategy="steps",
         logging_steps=10,
-        save_total_limit=2,
+        save_total_limit=5,
         learning_rate=learning_rate,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,

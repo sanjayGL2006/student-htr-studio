@@ -33,6 +33,7 @@ frontend/  React + Vite + TypeScript + Tailwind + React Flow
 cd backend
 python -m venv venv
 source venv/bin/activate        # Windows: venv\Scripts\activate
+
 pip install -r requirements.txt
 
 cp .env.example .env
@@ -117,6 +118,11 @@ handwriting.
   mean max-softmax across TrOCR's generated tokens. Useful for ranking
   "which lines need a human look" but not as an absolute quality metric.
 - **Per-student or dataset retraining.** While the base model uses a generalized encoder, you can now fine-tune the model to specific handwriting styles or datasets using the provided training script. This allows the system to better handle unusual handwriting or domain-specific text.
+- **SQLite is not supported** for this schema as-is: `nodes.bounding_box`
+  and `nodes.canvas_position` use PostgreSQL's `JSONB` column type. If you
+  want a lighter local-only setup (consistent with other SPVM³ projects),
+  swap `JSONB` for a generic `JSON` type in `models.py` and switch the
+  connection strings to `sqlite+aiosqlite:///./htr.db`.
 
 ## Fine-Tuning TrOCR
 
@@ -137,8 +143,3 @@ python train_trocr.py --synthetic --epochs 2
 
 To use your fine-tuned model in the application, update the backend environment variable:
 `TROCR_MODEL_ID=./models/trocr-custom`
-- **SQLite is not supported** for this schema as-is: `nodes.bounding_box`
-  and `nodes.canvas_position` use PostgreSQL's `JSONB` column type. If you
-  want a lighter local-only setup (consistent with other SPVM³ projects),
-  swap `JSONB` for a generic `JSON` type in `models.py` and switch the
-  connection strings to `sqlite+aiosqlite:///./htr.db`.

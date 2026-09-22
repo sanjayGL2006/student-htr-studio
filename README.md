@@ -7,23 +7,27 @@ as a whole-class workbook.
 
 ## Architecture
 
-```
-backend/   FastAPI + SQLAlchemy (async) + PostgreSQL
+```text
+backend/   FastAPI + SQLAlchemy (async) + Celery + PostgreSQL/SQLite
   app/
     engine/vision.py   OpenCV deskew + line segmentation, TrOCR inference
     engine/nlp.py      SymSpell lexical pass + T5 grammar correction
     api/routes.py      REST endpoints
+    worker.py          Celery worker for background processing
     export/exporters.py  docx / pdf / multi-sheet xlsx export
-    models.py          documents, nodes tables
+    models.py          Full database schema (Users, Jobs, Nodes, etc)
     schemas.py         Pydantic request/response models
     main.py            app entrypoint
+  alembic/             Database migration scripts
+
+k8s/                   Kubernetes deployment manifests
+docker-compose.yml     Local Docker orchestration
 
 frontend/  React + Vite + TypeScript + Tailwind + React Flow
   src/
     components/IngestionPanel.tsx   webcam + drag-drop upload
     components/CanvasView.tsx       React Flow board, editable nodes
     components/LineNode.tsx         custom node (raw/corrected/confidence)
-    components/RosterView.tsx       class roster grid
     components/ExportBar.tsx        per-student / per-class export links
 ```
 
@@ -37,12 +41,19 @@ source venv/bin/activate        # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 
 cp .env.example .env
-# edit .env: set DATABASE_URL to a running PostgreSQL instance
+# By default, .env uses SQLite (htr.db). Update DATABASE_URL for Postgres if preferred.
 
-# create the database (adjust to your local Postgres setup)
-createdb htr_db
+# Run database migrations
+alembic upgrade head
 
+# Run backend (and ensure Redis is running if using Celery)
 uvicorn app.main:app --reload --port 8000
+```
+
+### Running with Docker Compose
+The easiest way to run the entire system (Database, Redis, Celery Worker, Backend API, and Frontend) is via Docker Compose:
+```bash
+docker-compose up --build
 ```
 
 The first request that touches `/api/process-image` will download
@@ -118,11 +129,13 @@ handwriting.
   mean max-softmax across TrOCR's generated tokens. Useful for ranking
   "which lines need a human look" but not as an absolute quality metric.
 - **Per-student or dataset retraining.** While the base model uses a generalized encoder, you can now fine-tune the model to specific handwriting styles or datasets using the provided training script. This allows the system to better handle unusual handwriting or domain-specific text.
-- **SQLite is not supported** for this schema as-is: `nodes.bounding_box`
-  and `nodes.canvas_position` use PostgreSQL's `JSONB` column type. If you
-  want a lighter local-only setup (consistent with other SPVM³ projects),
-  swap `JSONB` for a generic `JSON` type in `models.py` and switch the
-  connection strings to `sqlite+aiosqlite:///./htr.db`.
+- **SQLite Support:** The system now uses generic `JSON` columns, meaning it works flawlessly out-of-the-box with SQLite (`htr.db`), making local setup friction-free without needing PostgreSQL.
+
+## Kubernetes Orchestration
+Production-ready Kubernetes manifests are available in the `k8s/` directory. They include deployments for the FastAPI backend, Celery workers, React frontend, Redis, and PostgreSQL. Deploy them using:
+```bash
+kubectl apply -f k8s/
+```
 
 ## Fine-Tuning TrOCR
 

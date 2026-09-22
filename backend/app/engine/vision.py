@@ -46,7 +46,7 @@ def _deskew(gray: np.ndarray) -> np.ndarray:
         return gray  # not enough ink to estimate an angle; leave as-is
 
     angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
+    if angle < settings.deskew_threshold:
         angle = -(90 + angle)
     else:
         angle = -angle
@@ -68,36 +68,55 @@ def _binarize_otsu(gray: np.ndarray) -> np.ndarray:
 
 
 def segment_lines(page_bgr: np.ndarray) -> list[LineCrop]:
-    """Rectangular line segmentation via morphological dilation. This is the
-    default, dependency-light approach; robust to varied slant/stroke
-    thickness across different students' handwriting because it operates on
-    ink density, not on any single student's stroke model."""
+    """Rectangular line segmentation via morphological dilation.
+    Uses configurable kernel sizes and falls back to connected components if no lines are found."""
     gray = cv2.cvtColor(page_bgr, cv2.COLOR_BGR2GRAY)
     gray = _deskew(gray)
     binary = _binarize_otsu(gray)
 
-    # Wide horizontal kernel merges words on the same line into one blob,
-    # while staying narrow vertically so separate lines don't merge together.
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (35, 5))
+    # Use settings for dynamic adaptation
+    kernel = cv2.getStructuringElement(
+        cv2.MORPH_RECT, 
+        (settings.dilation_kernel_width, settings.dilation_kernel_height)
+    )
     dilated = cv2.dilate(binary, kernel, iterations=2)
 
     contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
     boxes = [cv2.boundingRect(c) for c in contours]
-    # Filter tiny noise blobs (specks, punctuation fragments picked up alone)
-    boxes = [b for b in boxes if b[2] > 20 and b[3] > 10]
+    
+    # Filter using settings
+    boxes = [
+        b for b in boxes 
+        if b[2] >= settings.min_line_width and settings.min_line_height <= b[3] <= settings.max_line_height
+    ]
+
+    # Fallback: Connected-component analysis if no valid lines found
+    if not boxes and page_bgr.size > 0:
+        print("[WARN] Primary segmentation failed, falling back to connected components")
+        num_labels, labels, stats, centroids = cv2.connectedComponentsWithStats(binary, connectivity=8)
+        for i in range(1, num_labels):
+            x, y, w, h, area = stats[i]
+            if w >= settings.min_line_width and settings.min_line_height <= h <= settings.max_line_height:
+                boxes.append((x, y, w, h))
+        
+        # Merge very close boxes to form lines (simple heuristic)
+        # For simplicity, we just use the raw CC boxes for now.
+
     # Read top-to-bottom, left-to-right within a line band
     boxes.sort(key=lambda b: (b[1], b[0]))
 
     crops: list[LineCrop] = []
     for (x, y, w, h) in boxes:
-        pad = 4
+        pad = settings.line_padding
         y0, y1 = max(0, y - pad), min(page_bgr.shape[0], y + h + pad)
         x0, x1 = max(0, x - pad), min(page_bgr.shape[1], x + w + pad)
         crop = page_bgr[y0:y1, x0:x1]
         crops.append(LineCrop(image=crop, bounding_box={"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}))
 
+    # Final fallback: whole-region OCR with warning
     if not crops and page_bgr.size > 0:
+        print("[WARN] All segmentation failed, falling back to whole-region OCR")
         crops.append(
             LineCrop(
                 image=page_bgr,
